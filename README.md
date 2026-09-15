@@ -13,26 +13,44 @@ mapiranja polja (artefakt "GLS Naljepnice — Integracija").
   - `cancelLabel(parcelId)` — storniranje pri otkazanoj narudžbi.
   - `updateCod(parcelId, amount)` — izmjena otkupnine.
   - `getStatus(parcelNumber)` — status pošiljke.
-- `GlsLabelController` — REST sučelje za lokalno testiranje bez Pantheona.
+- `GlsLabelController` — REST sučelje za lokalno testiranje bez Pantheona, s `@Valid`
+  provjerom ulaznih polja.
+- `GlsExceptionHandler` — pretvara `GlsApiException`/validacijske/neočekivane greške u
+  čiste HTTP odgovore (502/400/500) umjesto Spring Bootovog generičkog 500-icа.
 - DTO-i vjerni GLS API dokumentaciji (`Parcel`, `Address`, `GlsService`, `ErrorInfo`, ...).
 - SHA-512 hashiranje lozinke, GLS `/Date(ms)/` format, konverzija byte-niza labela u PDF.
+- Fail-fast provjera kredencijala (`GlsLabelService.requireGlsCredentials`) — jasna
+  greška umjesto NPE-a kad `gls.username`/`gls.password` nisu popunjeni.
+- Connect/read timeout na `RestTemplate` (5s / 30s) i SLF4j logging poziva/grešaka
+  (bez logiranja payloada — adrese i password hash se ne pišu u log).
+- Testovi: `GlsLabelServiceTest` (poslovna logika — COD, mapiranje adresa, error
+  handling) i `GlsApiClientTest` (JSON wire format prema MyGLS-u, PascalCase nazivi
+  polja) uz postojeći `GlsPasswordEncoderTest`.
 
 ## Što još nedostaje (namjerno, izvan trenutnog opsega)
 
 - Pantheon konektor koji puni `LabelRequest` iz stvarne narudžbe (open pitanja u
   dokumentaciji: koji Pantheon API, fiksna pickup adresa, `WebshopEngine` vrijednost).
+  Bez njega servis radi samo preko ručnog curl/Postman testiranja.
 - Podrška za PSD (dostava na paketomat) — trenutno `GlsService` nosi samo `code`,
   bez `*Parameter` polja.
-- Perzistencija `ParcelId`/`ParcelNumber` natrag na Pantheon dokument (sprječavanje
-  dupliciranja naljepnice).
+- Idempotencija — dvostruki poziv `createLabel` za istu narudžbu kreira dvije
+  naljepnice/dvije GLS naplate. Nije sigurno izložiti ovo retry logici dok ne postoji
+  perzistencija `ParcelId`/`ParcelNumber` natrag na Pantheon dokument (vezano uz
+  konektor iznad).
 
 ## Konfiguracija
 
 Popuni `src/main/resources/application.yml` (`gls.username`, `gls.password`,
 `gls.client-number`, `gls.webshop-engine`, `gls.pickup-address.*`) — kredencijale
-zatraži od GLS-a za test i produkcijsko okruženje odvojeno. Ne commit-ati stvarne
-vrijednosti u git; za lokalni rad koristi npr. `application-local.yml` (već je u
-`.gitignore` obuhvaćeno samo `target/`/`.idea/`, po potrebi dodaj i taj file).
+zatraži od GLS-a za test i produkcijsko okruženje odvojeno. **Bez toga servis se
+pokreće, ali svaki poziv na `/api/gls/*` vraća 503** (fail-fast provjera), umjesto
+starog ponašanja gdje je pucalo s NPE duboko unutra.
+
+Za lokalne kredencijale koristi `application-local.yml` pored `application.yml` —
+`.gitignore` sad stvarno isključuje `application-local.yml`/`application-local.yaml`
+i `.env` (prije je README to tvrdio, a `.gitignore` file to nije pokrivao — ispravljeno).
+Ne commit-ati stvarne vrijednosti u `application.yml` samom.
 
 ## Pokretanje lokalno
 

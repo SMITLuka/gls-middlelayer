@@ -22,6 +22,7 @@ import hr.smit.gls.dto.response.PrintLabelsResponse;
 import hr.smit.gls.model.LabelRequest;
 import hr.smit.gls.model.LabelResult;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -35,6 +36,7 @@ import java.util.List;
  * Translates the simplified {@link LabelRequest} into the GLS {@link Parcel} wire
  * format and back into a plain {@link LabelResult}.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class GlsLabelService {
@@ -46,6 +48,9 @@ public class GlsLabelService {
 
     /** Creates and immediately prints a label (PrintLabels = PrepareLabels + GetPrintedLabels). */
     public LabelResult createLabel(LabelRequest request) {
+        requireGlsCredentials();
+        log.info("Kreiranje GLS naljepnice za clientReference={}", request.clientReference());
+
         PrintLabelsRequest apiRequest = PrintLabelsRequest.builder()
                 .username(properties.getUsername())
                 .password(GlsPasswordEncoder.toUnsignedByteArray(properties.getPassword()))
@@ -58,14 +63,20 @@ public class GlsLabelService {
         PrintLabelsResponse response = glsApiClient.printLabels(apiRequest);
 
         if (response == null) {
+            log.warn("Prazan odgovor od MyGLS servisa za clientReference={}", request.clientReference());
             return LabelResult.failure(List.of("Prazan odgovor od MyGLS servisa."));
         }
         if (hasErrors(response.getPrintLabelsErrorList())) {
-            return LabelResult.failure(describeErrors(response.getPrintLabelsErrorList()));
+            List<String> errors = describeErrors(response.getPrintLabelsErrorList());
+            log.warn("MyGLS PrintLabels greške za clientReference={}: {}", request.clientReference(), errors);
+            return LabelResult.failure(errors);
         }
 
         PrintLabelsInfo info = firstOrNull(response.getPrintLabelsInfoList());
         byte[] pdf = GlsBinaryUtil.toBytes(response.getLabels());
+
+        log.info("GLS naljepnica kreirana za clientReference={}: parcelId={}, parcelNumber={}",
+                request.clientReference(), info != null ? info.getParcelId() : null, info != null ? info.getParcelNumber() : null);
 
         return LabelResult.success(
                 info != null ? info.getParcelId() : null,
@@ -76,6 +87,9 @@ public class GlsLabelService {
 
     /** Cancels (DELETED state) a previously created label, e.g. when an order is cancelled. */
     public boolean cancelLabel(int parcelId) {
+        requireGlsCredentials();
+        log.info("Storniranje GLS naljepnice parcelId={}", parcelId);
+
         DeleteLabelsRequest request = DeleteLabelsRequest.builder()
                 .username(properties.getUsername())
                 .password(GlsPasswordEncoder.toUnsignedByteArray(properties.getPassword()))
@@ -84,14 +98,23 @@ public class GlsLabelService {
                 .build();
 
         DeleteLabelsResponse response = glsApiClient.deleteLabels(request);
-        return response != null
+        boolean deleted = response != null
                 && !hasErrors(response.getDeleteLabelsErrorList())
                 && response.getSuccessfullyDeletedList() != null
                 && !response.getSuccessfullyDeletedList().isEmpty();
+
+        if (!deleted) {
+            log.warn("Storniranje GLS naljepnice nije uspjelo za parcelId={}: {}", parcelId,
+                    response != null ? describeErrors(response.getDeleteLabelsErrorList()) : "prazan odgovor");
+        }
+        return deleted;
     }
 
     /** Updates the COD amount after the label was already created. */
     public boolean updateCod(int parcelId, BigDecimal newAmount) {
+        requireGlsCredentials();
+        log.info("Izmjena otkupnine parcelId={} na iznos={}", parcelId, newAmount);
+
         ModifyCODRequest request = ModifyCODRequest.builder()
                 .username(properties.getUsername())
                 .password(GlsPasswordEncoder.toUnsignedByteArray(properties.getPassword()))
@@ -101,11 +124,20 @@ public class GlsLabelService {
                 .build();
 
         ModifyCODResponse response = glsApiClient.modifyCod(request);
-        return response != null && response.isSuccessful();
+        boolean updated = response != null && response.isSuccessful();
+
+        if (!updated) {
+            log.warn("Izmjena otkupnine nije uspjela za parcelId={}: {}", parcelId,
+                    response != null ? describeErrors(response.getModifyCODError()) : "prazan odgovor");
+        }
+        return updated;
     }
 
     /** Tracking: current status history for a parcel number. */
     public List<ParcelStatus> getStatus(long parcelNumber) {
+        requireGlsCredentials();
+        log.info("Dohvat statusa za parcelNumber={}", parcelNumber);
+
         GetParcelStatusesRequest request = GetParcelStatusesRequest.builder()
                 .username(properties.getUsername())
                 .password(GlsPasswordEncoder.toUnsignedByteArray(properties.getPassword()))
@@ -175,9 +207,27 @@ public class GlsLabelService {
     }
 
     private static List<String> describeErrors(List<ErrorInfo> errors) {
+        if (errors == null) {
+            return List.of();
+        }
         return errors.stream()
                 .map(e -> "[" + e.getErrorCode() + "] " + e.getErrorDescription())
                 .toList();
+    }
+
+    /**
+     * Fails fast with a clear message instead of letting a missing username/password
+     * surface as a raw NullPointerException inside {@link GlsPasswordEncoder}.
+     */
+    private void requireGlsCredentials() {
+        if (isBlank(properties.getUsername()) || isBlank(properties.getPassword())) {
+            throw new IllegalStateException(
+                    "GLS kredencijali nisu konfigurirani - popuni gls.username i gls.password (application.yml ili application-local.yml).");
+        }
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private static <T> T firstOrNull(List<T> list) {

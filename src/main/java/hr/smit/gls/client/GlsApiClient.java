@@ -15,6 +15,7 @@ import hr.smit.gls.dto.response.PrepareLabelsResponse;
 import hr.smit.gls.dto.response.PrintLabelsResponse;
 import hr.smit.gls.exception.GlsApiException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClientException;
@@ -26,6 +27,7 @@ import org.springframework.web.client.RestTemplate;
  * Talks JSON only; one method per operation actually needed by {@link
  * hr.smit.gls.service.GlsLabelService}.
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class GlsApiClient {
@@ -59,10 +61,13 @@ public class GlsApiClient {
 
     private <T> T post(String method, Object request, Class<T> responseType) {
         String url = properties.resolveBaseUrl() + "/json/" + method;
+        log.info("MyGLS poziv: {} -> {}", method, url);
         try {
             ResponseEntity<T> response = restTemplate.postForEntity(url, request, responseType);
+            log.debug("MyGLS odgovor: {} -> {}", method, response.getStatusCode());
             return response.getBody();
         } catch (RestClientException e) {
+            log.error("MyGLS poziv nije uspio: {} -> {}", method, url, e);
             throw new GlsApiException("Poziv prema MyGLS API-ju nije uspio (" + method + "): " + e.getMessage(), e);
         }
     }

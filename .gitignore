@@ -3,3 +3,8 @@ target/
 *.iml
 .vscode/
 *.log
+
+# local secrets - never commit real GLS credentials
+application-local.yml
+application-local.yaml
+.env

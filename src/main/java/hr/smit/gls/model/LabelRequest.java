@@ -1,5 +1,9 @@
 package hr.smit.gls.model;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
@@ -8,8 +12,8 @@ import java.time.LocalDate;
  * null or zero means the parcel is not cash-on-delivery.
  */
 public record LabelRequest(
-        String clientReference,
-        RecipientInfo recipient,
+        @NotBlank(message = "clientReference (broj narudžbe) je obavezan") String clientReference,
+        @NotNull(message = "Podaci o primatelju su obavezni") @Valid RecipientInfo recipient,
         BigDecimal codAmount,
         String codReference,
         String content,

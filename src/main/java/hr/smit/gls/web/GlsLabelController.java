@@ -4,6 +4,7 @@ import hr.smit.gls.dto.common.ParcelStatus;
 import hr.smit.gls.model.LabelRequest;
 import hr.smit.gls.model.LabelResult;
 import hr.smit.gls.service.GlsLabelService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -33,7 +34,7 @@ public class GlsLabelController {
     private final GlsLabelService glsLabelService;
 
     @PostMapping("/labels")
-    public ResponseEntity<?> createLabel(@RequestBody LabelRequest request) {
+    public ResponseEntity<?> createLabel(@Valid @RequestBody LabelRequest request) {
         LabelResult result = glsLabelService.createLabel(request);
         if (!result.success()) {
             return ResponseEntity.badRequest().body(result.errors());
