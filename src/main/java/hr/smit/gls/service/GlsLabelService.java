@@ -1,0 +1,190 @@
+package hr.smit.gls.service;
+
+import hr.smit.gls.client.GlsApiClient;
+import hr.smit.gls.client.GlsBinaryUtil;
+import hr.smit.gls.client.GlsDateFormat;
+import hr.smit.gls.client.GlsPasswordEncoder;
+import hr.smit.gls.config.GlsProperties;
+import hr.smit.gls.dto.common.Address;
+import hr.smit.gls.dto.common.ErrorInfo;
+import hr.smit.gls.dto.common.GlsService;
+import hr.smit.gls.dto.common.Parcel;
+import hr.smit.gls.dto.common.ParcelStatus;
+import hr.smit.gls.dto.common.PrintLabelsInfo;
+import hr.smit.gls.dto.request.DeleteLabelsRequest;
+import hr.smit.gls.dto.request.GetParcelStatusesRequest;
+import hr.smit.gls.dto.request.ModifyCODRequest;
+import hr.smit.gls.dto.request.PrintLabelsRequest;
+import hr.smit.gls.dto.response.DeleteLabelsResponse;
+import hr.smit.gls.dto.response.GetParcelStatusResponse;
+import hr.smit.gls.dto.response.ModifyCODResponse;
+import hr.smit.gls.dto.response.PrintLabelsResponse;
+import hr.smit.gls.model.LabelRequest;
+import hr.smit.gls.model.LabelResult;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Middleware-facing operations for GLS shipping labels - this is what a Pantheon
+ * connector (or a "KREIRAJ GLS NALJEPNICU" button handler) is expected to call.
+ * Translates the simplified {@link LabelRequest} into the GLS {@link Parcel} wire
+ * format and back into a plain {@link LabelResult}.
+ */
+@Service
+@RequiredArgsConstructor
+public class GlsLabelService {
+
+    private static final String COD_SERVICE_CODE = "COD";
+
+    private final GlsApiClient glsApiClient;
+    private final GlsProperties properties;
+
+    /** Creates and immediately prints a label (PrintLabels = PrepareLabels + GetPrintedLabels). */
+    public LabelResult createLabel(LabelRequest request) {
+        PrintLabelsRequest apiRequest = PrintLabelsRequest.builder()
+                .username(properties.getUsername())
+                .password(GlsPasswordEncoder.toUnsignedByteArray(properties.getPassword()))
+                .webshopEngine(properties.getWebshopEngine())
+                .parcelList(List.of(buildParcel(request)))
+                .printPosition(1)
+                .showPrintDialog(false)
+                .build();
+
+        PrintLabelsResponse response = glsApiClient.printLabels(apiRequest);
+
+        if (response == null) {
+            return LabelResult.failure(List.of("Prazan odgovor od MyGLS servisa."));
+        }
+        if (hasErrors(response.getPrintLabelsErrorList())) {
+            return LabelResult.failure(describeErrors(response.getPrintLabelsErrorList()));
+        }
+
+        PrintLabelsInfo info = firstOrNull(response.getPrintLabelsInfoList());
+        byte[] pdf = GlsBinaryUtil.toBytes(response.getLabels());
+
+        return LabelResult.success(
+                info != null ? info.getParcelId() : null,
+                info != null ? info.getParcelNumber() : null,
+                pdf
+        );
+    }
+
+    /** Cancels (DELETED state) a previously created label, e.g. when an order is cancelled. */
+    public boolean cancelLabel(int parcelId) {
+        DeleteLabelsRequest request = DeleteLabelsRequest.builder()
+                .username(properties.getUsername())
+                .password(GlsPasswordEncoder.toUnsignedByteArray(properties.getPassword()))
+                .webshopEngine(properties.getWebshopEngine())
+                .parcelIdList(List.of(parcelId))
+                .build();
+
+        DeleteLabelsResponse response = glsApiClient.deleteLabels(request);
+        return response != null
+                && !hasErrors(response.getDeleteLabelsErrorList())
+                && response.getSuccessfullyDeletedList() != null
+                && !response.getSuccessfullyDeletedList().isEmpty();
+    }
+
+    /** Updates the COD amount after the label was already created. */
+    public boolean updateCod(int parcelId, BigDecimal newAmount) {
+        ModifyCODRequest request = ModifyCODRequest.builder()
+                .username(properties.getUsername())
+                .password(GlsPasswordEncoder.toUnsignedByteArray(properties.getPassword()))
+                .webshopEngine(properties.getWebshopEngine())
+                .parcelId(parcelId)
+                .codAmount(newAmount)
+                .build();
+
+        ModifyCODResponse response = glsApiClient.modifyCod(request);
+        return response != null && response.isSuccessful();
+    }
+
+    /** Tracking: current status history for a parcel number. */
+    public List<ParcelStatus> getStatus(long parcelNumber) {
+        GetParcelStatusesRequest request = GetParcelStatusesRequest.builder()
+                .username(properties.getUsername())
+                .password(GlsPasswordEncoder.toUnsignedByteArray(properties.getPassword()))
+                .webshopEngine(properties.getWebshopEngine())
+                .parcelNumber(parcelNumber)
+                .returnPOD(false)
+                .languageIsoCode("HR")
+                .build();
+
+        GetParcelStatusResponse response = glsApiClient.getParcelStatuses(request);
+        if (response == null || response.getParcelStatusList() == null) {
+            return List.of();
+        }
+        return response.getParcelStatusList();
+    }
+
+    private Parcel buildParcel(LabelRequest request) {
+        Address delivery = Address.builder()
+                .name(request.recipient().name())
+                .street(request.recipient().street())
+                .houseNumber(request.recipient().houseNumber())
+                .houseNumberInfo(request.recipient().houseNumberInfo())
+                .city(request.recipient().city())
+                .zipCode(request.recipient().zipCode())
+                .countryIsoCode(orDefault(request.recipient().countryIsoCode(), "HR"))
+                .contactName(request.recipient().contactName())
+                .contactPhone(request.recipient().contactPhone())
+                .contactEmail(request.recipient().contactEmail())
+                .build();
+
+        GlsProperties.PickupAddress pickupCfg = properties.getPickupAddress();
+        Address pickup = Address.builder()
+                .name(pickupCfg.getName())
+                .street(pickupCfg.getStreet())
+                .houseNumber(pickupCfg.getHouseNumber())
+                .houseNumberInfo(pickupCfg.getHouseNumberInfo())
+                .city(pickupCfg.getCity())
+                .zipCode(pickupCfg.getZipCode())
+                .countryIsoCode(pickupCfg.getCountryIsoCode())
+                .contactName(pickupCfg.getContactName())
+                .contactPhone(pickupCfg.getContactPhone())
+                .contactEmail(pickupCfg.getContactEmail())
+                .build();
+
+        boolean hasCod = request.codAmount() != null && request.codAmount().compareTo(BigDecimal.ZERO) > 0;
+        List<GlsService> services = new ArrayList<>();
+        if (hasCod) {
+            services.add(GlsService.builder().code(COD_SERVICE_CODE).build());
+        }
+
+        return Parcel.builder()
+                .clientNumber(properties.getClientNumber())
+                .clientReference(request.clientReference())
+                .count(1)
+                .codAmount(hasCod ? request.codAmount() : BigDecimal.ZERO)
+                .codReference(hasCod ? orDefault(request.codReference(), request.clientReference()) : null)
+                .content(request.content())
+                .pickupDate(GlsDateFormat.toGlsDate(request.pickupDate() != null ? request.pickupDate() : LocalDate.now()))
+                .pickupAddress(pickup)
+                .deliveryAddress(delivery)
+                .serviceList(services)
+                .build();
+    }
+
+    private static boolean hasErrors(List<ErrorInfo> errors) {
+        return errors != null && !errors.isEmpty();
+    }
+
+    private static List<String> describeErrors(List<ErrorInfo> errors) {
+        return errors.stream()
+                .map(e -> "[" + e.getErrorCode() + "] " + e.getErrorDescription())
+                .toList();
+    }
+
+    private static <T> T firstOrNull(List<T> list) {
+        return list != null && !list.isEmpty() ? list.get(0) : null;
+    }
+
+    private static String orDefault(String value, String fallback) {
+        return value != null && !value.isBlank() ? value : fallback;
+    }
+}

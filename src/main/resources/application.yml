@@ -1,0 +1,26 @@
+server:
+  port: 8081
+
+gls:
+  environment: test # test | prod
+  test-base-url: https://api.test.mygls.hr/ParcelService.svc
+  prod-base-url: https://api.mygls.hr/ParcelService.svc
+
+  # TODO: popuniti - zatraziti od GLS-a za Hair House Professional ugovor
+  username:
+  password:
+  client-number:
+  # TODO: dogovoriti vrijednost s GLS-om (obavezno polje od v.17 API-ja)
+  webshop-engine:
+
+  pickup-address:
+    name: Hair House Professional
+    street: # TODO
+    house-number: # TODO
+    house-number-info:
+    city: # TODO
+    zip-code: # TODO
+    country-iso-code: HR
+    contact-name: # TODO
+    contact-phone: # TODO
+    contact-email: # TODO
