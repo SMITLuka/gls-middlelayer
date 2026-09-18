@@ -19,6 +19,7 @@ import hr.smit.gls.dto.response.DeleteLabelsResponse;
 import hr.smit.gls.dto.response.GetParcelStatusResponse;
 import hr.smit.gls.dto.response.ModifyCODResponse;
 import hr.smit.gls.dto.response.PrintLabelsResponse;
+import hr.smit.gls.mock.MockPdfGenerator;
 import hr.smit.gls.model.LabelRequest;
 import hr.smit.gls.model.LabelResult;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +49,10 @@ public class GlsLabelService {
 
     /** Creates and immediately prints a label (PrintLabels = PrepareLabels + GetPrintedLabels). */
     public LabelResult createLabel(LabelRequest request) {
+        if (properties.isMockEnabled()) {
+            return createMockLabel(request);
+        }
+
         requireGlsCredentials();
         log.info("Kreiranje GLS naljepnice za clientReference={}", request.clientReference());
 
@@ -152,6 +157,23 @@ public class GlsLabelService {
             return List.of();
         }
         return response.getParcelStatusList();
+    }
+
+    /**
+     * gls.mock-enabled=true path - no GLS credentials, no network call. Returns a
+     * synthetic PDF and a fake parcel number so the Pantheon/ARES side (JSON body,
+     * response headers, acfield write-back, PDF open) can be tested end-to-end while
+     * real MyGLS credentials/agreement are still pending.
+     */
+    private LabelResult createMockLabel(LabelRequest request) {
+        int fakeParcelId = (int) (System.currentTimeMillis() % 100_000);
+        long fakeParcelNumber = 900_000_000_000L + (System.currentTimeMillis() % 1_000_000_000L);
+
+        log.info("[MOCK] Kreiranje GLS naljepnice za clientReference={} -> parcelId={}, parcelNumber={}",
+                request.clientReference(), fakeParcelId, fakeParcelNumber);
+
+        byte[] pdf = MockPdfGenerator.generate(request.clientReference(), fakeParcelNumber);
+        return LabelResult.success(fakeParcelId, fakeParcelNumber, pdf);
     }
 
     private Parcel buildParcel(LabelRequest request) {

@@ -14,6 +14,13 @@ public class GlsProperties {
     /** "test" or "prod" - selects which base URL is used. */
     private String environment = "test";
 
+    /**
+     * When true, createLabel returns a synthetic PDF + fake parcel number instead of
+     * calling MyGLS - lets the Pantheon/ARES plumbing (JSON, headers, acfield write-back,
+     * PDF open) be tested before real GLS credentials are available. Never true in prod.
+     */
+    private boolean mockEnabled = false;
+
     private String testBaseUrl = "https://api.test.mygls.hr/ParcelService.svc";
     private String prodBaseUrl = "https://api.mygls.hr/ParcelService.svc";
 

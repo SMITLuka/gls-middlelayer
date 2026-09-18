@@ -3,6 +3,13 @@ server:
 
 gls:
   environment: test # test | prod
+
+  # Dok GLS kredencijali nisu stigli: vraca lazni PDF + izmisljen broj posiljke,
+  # bez ikakvog poziva prema MyGLS-u. Testira cijeli Pantheon/ARES tok (JSON,
+  # response headeri, upis u acfield01, otvaranje PDF-a). Postaviti na false
+  # cim stignu pravi kredencijali - NIKAD true u produkciji.
+  mock-enabled: true
+
   test-base-url: https://api.test.mygls.hr/ParcelService.svc
   prod-base-url: https://api.mygls.hr/ParcelService.svc
 
@@ -10,8 +17,9 @@ gls:
   username:
   password:
   client-number:
-  # TODO: dogovoriti vrijednost s GLS-om (obavezno polje od v.17 API-ja)
-  webshop-engine:
+  # Slobodan tekstualni identifikator platforme - dokumentacija ne trazi
+  # odobrenje GLS-a, samo da polje bude popunjeno.
+  webshop-engine: SMIT-Pantheon-ARES
 
   pickup-address:
     name: Hair House Professional

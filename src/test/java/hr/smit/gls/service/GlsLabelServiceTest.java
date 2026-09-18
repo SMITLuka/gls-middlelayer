@@ -67,6 +67,22 @@ class GlsLabelServiceTest {
     }
 
     @Test
+    void createLabel_mockEnabled_returnsSyntheticLabelWithoutCallingGlsOrCredentials() {
+        properties.setMockEnabled(true);
+        properties.setUsername(null);
+        properties.setPassword(null);
+
+        LabelResult result = service.createLabel(sampleRequest(new BigDecimal("10.00")));
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.parcelId()).isNotNull();
+        assertThat(result.parcelNumber()).isNotNull();
+        assertThat(result.labelPdf()).isNotEmpty();
+        assertThat(new String(result.labelPdf(), java.nio.charset.StandardCharsets.US_ASCII)).startsWith("%PDF-1.4");
+        verifyNoInteractions(glsApiClient);
+    }
+
+    @Test
     void createLabel_missingCredentials_throwsIllegalStateInsteadOfNpe() {
         properties.setUsername(null);
         properties.setPassword(null);

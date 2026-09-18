@@ -26,12 +26,17 @@ mapiranja polja (artefakt "GLS Naljepnice — Integracija").
 - Testovi: `GlsLabelServiceTest` (poslovna logika — COD, mapiranje adresa, error
   handling) i `GlsApiClientTest` (JSON wire format prema MyGLS-u, PascalCase nazivi
   polja) uz postojeći `GlsPasswordEncoderTest`.
+- **Mock mod** (`gls.mock-enabled: true`, default u `application.yml`) — `createLabel`
+  vraća lažni PDF (`MockPdfGenerator`) i izmišljen broj pošiljke bez ikakvog poziva
+  prema MyGLS-u i bez potrebe za GLS kredencijalima. Namijenjen testiranju cijelog
+  Pantheon/ARES toka (JSON zahtjev, `X-Parcel-*` headeri, upis u `acfield01`, otvaranje
+  PDF-a) dok se čeka na stvarni GLS ugovor. **Postaviti na `false` prije produkcije.**
 
 ## Što još nedostaje (namjerno, izvan trenutnog opsega)
 
 - Pantheon konektor koji puni `LabelRequest` iz stvarne narudžbe (open pitanja u
-  dokumentaciji: koji Pantheon API, fiksna pickup adresa, `WebshopEngine` vrijednost).
-  Bez njega servis radi samo preko ručnog curl/Postman testiranja.
+  dokumentaciji: fiksna pickup adresa, treba li PSD). Bez njega servis radi samo
+  preko ručnog curl/Postman testiranja ili ARES gumba u mock modu.
 - Podrška za PSD (dostava na paketomat) — trenutno `GlsService` nosi samo `code`,
   bez `*Parameter` polja.
 - Idempotencija — dvostruki poziv `createLabel` za istu narudžbu kreira dvije

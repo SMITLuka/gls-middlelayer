@@ -41,6 +41,8 @@ public class GlsLabelController {
         }
         return ResponseEntity.ok()
                 .header("Content-Disposition", "inline; filename=label-" + result.parcelId() + ".pdf")
+                .header("X-Parcel-Id", String.valueOf(result.parcelId()))
+                .header("X-Parcel-Number", String.valueOf(result.parcelNumber()))
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(result.labelPdf());
     }
